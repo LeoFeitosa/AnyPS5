@@ -4147,7 +4147,12 @@ void StorageTexture::Flush() {
 }
 
 bool StorageTexture::storesWhole() const {
-    return descriptor.dccAddress != 0 && (uploadedKeys != DccKeys::Uncompressed || descriptor.mipCount > 1);
+    if (descriptor.dccAddress == 0) return false;
+    if (uploadedKeys != DccKeys::Uncompressed) return true;
+    if (descriptor.mipCount <= 1) return false;
+    auto& live = Live();
+    std::lock_guard lock(live.mutex);
+    return std::any_of(live.textures.begin(), live.textures.end(), [this](const StorageTexture* texture) { return texture != this && texture->overlapsLive(descriptor.baseAddress, static_cast<std::size_t>(guestBytes)); });
 }
 
 // Whether a pending unit of the image lies inside the range (writeBack's own selection): an image

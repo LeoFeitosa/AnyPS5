@@ -6697,11 +6697,13 @@ void dccMipWriteBackTests(const Device& device, Recorder& recorder) {
     struct Case {
         const char* name;
         bool dcc;
+        bool aliased;
         bool everyUnit;
     };
     const Case cases[] = {
-        {"64 KiB R_X 512x512, 3 mips, no DCC, an access to the first unit", false, false},
-        {"64 KiB R_X 512x512, 3 mips, DCC keys uncompressed, an access to the first unit", true, true},
+        {"64 KiB R_X 512x512, 3 mips, no DCC, an access to the first unit", false, false, false},
+        {"64 KiB R_X 512x512, 3 mips, DCC keys uncompressed, an access to the first unit", true, false, false},
+        {"64 KiB R_X 512x512, 3 mips, DCC keys uncompressed, a live one-mip image over the same memory, an access to the first unit", true, true, true},
     };
     const auto pattern = [](std::size_t i) { return static_cast<std::uint8_t>(i * 131u + 7u); };
     constexpr std::array<std::uint8_t, 4> red{255, 0, 0, 255};
@@ -6765,6 +6767,10 @@ void dccMipWriteBackTests(const Device& device, Recorder& recorder) {
         {
             auto image = StorageTexture::Create(context, detiler, resource, 0);
             if (test.dcc) Require(image->UploadedKeys() == DccKeys::Uncompressed, std::string(test.name) + ": the image did not take its keys as uncompressed");
+            auto single = resource;
+            single.mipCount = 1;
+            single.dccAddress = 0;
+            const auto alias = test.aliased ? StorageTexture::Create(context, detiler, single, 0) : nullptr;
             const VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0, resource.mipCount, 0, 1};
             const auto commands = recorder.Commands();
             recorder.Keep(image);
