@@ -3,6 +3,7 @@
 #include "prx/libSceAgcDriver/Execution/include/VulkanDevice.hpp"
 #include "prx/libSceAgcDriver/Graphics/include/DepthSurface.hpp"
 #include "prx/libSceAgcDriver/Graphics/include/GuestTextureResource.hpp"
+#include "prx/libSceAgcDriver/Graphics/include/Recorder.hpp"
 #include "prx/libc/include/GuestAllocations.hpp"
 #include "prx/libc/include/GuestArena.hpp"
 #include "prx/libc/include/GuestWriteWatch.hpp"
@@ -441,17 +442,13 @@ int main(int argc, char** argv) {
         const auto device = OpenVulkanTestDevice();
         if (!device) return VulkanTestSkipped;
         const std::span<std::uint32_t> output(reinterpret_cast<std::uint32_t*>(block.At(OutputOffset)), Threads);
-        ArrayCase(*device, block, output);
-        CubeCase(*device, block, output);
-        IntegerCase(*device, block, output);
-        DepthBitsArrayCase(*device, block, output);
-        DepthBitsBaseSliceCase(*device, block, output);
-        GuestDepthBitsCase(*device, block, output);
-        FirstSliceCase(*device, block, output);
-        PaddedCubeCase(*device, block, output);
-        SmallD16CubeCase(*device, block, output);
-        PaddedD16CubeCase(*device, block, output);
-        BaseSliceCase(*device, block, output);
+        for (const auto run : {ArrayCase, CubeCase, IntegerCase, DepthBitsArrayCase, DepthBitsBaseSliceCase, GuestDepthBitsCase, FirstSliceCase, PaddedCubeCase, SmallD16CubeCase, PaddedD16CubeCase, BaseSliceCase}) {
+            if (evicting) {
+                AgcDriver::Graphics::Recorder::CountPresent();
+                AgcDriver::Graphics::Recorder::CountPresent();
+            }
+            run(*device, block, output);
+        }
         RefusalCase(*device, block);
         if (evicting) {
             const auto kept = AgcDriver::Graphics::DepthPlaneCopyCount();

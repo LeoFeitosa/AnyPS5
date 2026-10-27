@@ -459,6 +459,8 @@ void PooledPlaneCopies(const Context& context, const WatchedBlock& first, const 
     DepthSurfaceView(context, DepthTarget{first.Address(), 0, {Side, Side}, VK_FORMAT_D32_SFLOAT, 1.0f, 0, 0});
     DepthSurfaceView(context, DepthTarget{second.Address(), 0, {Side, Side}, VK_FORMAT_D32_SFLOAT, 1.0f, 0, 0});
     const auto sample = [&](const WatchedBlock& block, int round) {
+        Recorder::CountPresent();
+        Recorder::CountPresent();
         lastFilledImage = VK_NULL_HANDLE;
         bufferToImageCopies = 0;
         Require(DepthSurfaceTexture(context, words, ArrayOver(block.Address()), components) != nullptr, "the 2D array over a depth surface was not sampled through its depth planes in round " + std::to_string(round));
@@ -486,6 +488,32 @@ void PooledPlaneCopies(const Context& context, const WatchedBlock& first, const 
     } else {
         Require(memoryAllocations.load() == 0, "plane copies evicted and made again over a full budget allocated device memory " + std::to_string(memoryAllocations.load()) + " times instead of taking the evicted copies' memory back");
     }
+    ClearDepthSurfaces(context.device);
+}
+
+void SameFramePlaneCopies(const Context& context, const WatchedBlock& first, const WatchedBlock& second) {
+    ClearDepthSurfaces(context.device);
+    FillLayer(first.Data() + LayerBytes, 0.25f);
+    FillLayer(second.Data() + LayerBytes, 0.75f);
+    DepthSurfaceView(context, DepthTarget{first.Address(), 0, {Side, Side}, VK_FORMAT_D32_SFLOAT, 1.0f, 0, 0});
+    DepthSurfaceView(context, DepthTarget{second.Address(), 0, {Side, Side}, VK_FORMAT_D32_SFLOAT, 1.0f, 0, 0});
+    const auto sample = [&](const WatchedBlock& block, const char* when) {
+        bufferToImageCopies = 0;
+        Require(DepthSurfaceTexture(context, words, ArrayOver(block.Address()), components) != nullptr, std::string("the 2D array over a depth surface was not sampled through its depth planes ") + when);
+    };
+    Recorder::CountPresent();
+    Recorder::CountPresent();
+    sample(first, "first in the frame");
+    sample(second, "second in the frame");
+    Require(DepthPlaneCopyCount() == 2, "a plane copy sampled in the current frame was evicted to fit a budget that holds one, " + std::to_string(DepthPlaneCopyCount()) + " copies");
+    sample(first, "again in the same frame");
+    Require(bufferToImageCopies.load() == 0, "a plane copy kept in the same frame was filled again " + std::to_string(bufferToImageCopies.load()) + " times though its layer did not change");
+    Recorder::CountPresent();
+    sample(first, "in the next frame");
+    Require(DepthPlaneCopyCount() == 2, "a plane copy sampled in the previous frame was evicted, " + std::to_string(DepthPlaneCopyCount()) + " copies");
+    Recorder::CountPresent();
+    sample(first, "two frames after the other copy's last use");
+    Require(DepthPlaneCopyCount() == 1, "a plane copy unused for two frames was kept over a budget that holds one, " + std::to_string(DepthPlaneCopyCount()) + " copies");
     ClearDepthSurfaces(context.device);
 }
 
@@ -624,6 +652,7 @@ int main() {
             {
                 WatchedBlock second;
                 PooledPlaneCopies(context, block, second);
+                SameFramePlaneCopies(context, block, second);
             }
             SharedLayerRanges(context, block);
             RunCubeGather(context, block);
